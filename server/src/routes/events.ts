@@ -7,6 +7,7 @@ import { generateReferralCode } from "../utils/referral";
 import { matchesClubSlug } from "../utils/slug";
 import { memoryCache } from "../utils/cache";
 import { requireAdminAuth } from "./admin";
+import { sendRegistrationConfirmationEmail } from "../utils/email";
 
 const router = Router();
 
@@ -351,6 +352,20 @@ router.post("/:slug/register", async (req: Request, res: Response) => {
     memoryCache.delete(`leaderboard:${slug}`);
 
     const shareLink = `${clientOrigin}/?ref=${newRegistration.referralCode}`;
+
+    // 10. Send confirmation email (non-blocking, failure-safe)
+    sendRegistrationConfirmationEmail({
+      to: newRegistration.email,
+      name: newRegistration.name,
+      eventTitle: event.title,
+      eventStartsAt: event.startsAt,
+      eventSlug: event.slug,
+      referralCode: newRegistration.referralCode,
+      shareLink,
+      collegeName: college.name,
+    }).catch((emailErr) => {
+      console.error("[email] Non-blocking confirmation email error:", emailErr);
+    });
 
     return res.status(201).json({
       message: "Registration successful! Welcome to the workshop.",
