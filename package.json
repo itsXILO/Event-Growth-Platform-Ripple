@@ -9,7 +9,10 @@
     "dev:client": "npm run dev --prefix client",
     "build": "npm run build --prefix server && npm run build --prefix client",
     "lint": "eslint 'client/src/**/*.{ts,tsx}' 'server/src/**/*.ts'",
-    "format": "prettier --write 'client/src/**/*.{ts,tsx,css}' 'server/src/**/*.ts'"
+    "format": "prettier --write 'client/src/**/*.{ts,tsx,css}' 'server/src/**/*.ts'",
+    "db:generate": "npm run db:generate --prefix server",
+    "db:migrate": "npm run db:migrate --prefix server",
+    "db:studio": "npm run db:studio --prefix server"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",
