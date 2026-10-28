@@ -4,7 +4,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { events, communities, registrations } from "../db/schema";
 import { generateReferralCode } from "../utils/referral";
-import { slugify } from "../utils/slug";
+import { matchesClubSlug } from "../utils/slug";
+import { memoryCache } from "../utils/cache";
 
 const router = Router();
 
@@ -76,6 +77,66 @@ router.get("/:slug", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Failed to retrieve event:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * GET /api/events/:slug/stats
+ * Efficient SQL aggregation for total registrations, goal of 500, and percentage.
+ * Cached for 5 seconds.
+ */
+router.get("/:slug/stats", async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const cacheKey = `stats:${slug}`;
+
+    const cached = memoryCache.get<object>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const [event] = await db
+      .select({ id: events.id, slug: events.slug, title: events.title })
+      .from(events)
+      .where(eq(events.slug, slug))
+      .limit(1);
+
+    if (!event) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+
+    // Efficient single SQL aggregation
+    const [stats] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(registrations)
+      .where(eq(registrations.eventId, event.id));
+
+    const total = stats?.count ?? 0;
+    const goal = 500;
+    const percent = Math.min(100, Math.round((total / goal) * 100));
+
+    const payload = {
+      event: {
+        id: event.id,
+        slug: event.slug,
+        title: event.title,
+      },
+      total,
+      totalRegistrations: total,
+      goal,
+      percent,
+      percentage: percent,
+      remaining: Math.max(0, goal - total),
+      cachedAt: new Date().toISOString(),
+    };
+
+    memoryCache.set(cacheKey, payload, 5); // 5 second cache
+    res.setHeader("X-Cache", "MISS");
+    return res.json(payload);
+  } catch (error) {
+    console.error("Failed to retrieve event stats:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -214,15 +275,9 @@ router.post("/:slug/register", async (req: Request, res: Response) => {
           .from(communities)
           .where(eq(communities.type, "club"));
 
-        const targetSlug = slugify(inputClubSlug);
-        const matchedClub = allClubs.find((c) => {
-          const cSlug = slugify(c.name);
-          return (
-            cSlug === targetSlug ||
-            cSlug.includes(targetSlug) ||
-            targetSlug.includes(cSlug)
-          );
-        });
+        const matchedClub = allClubs.find((c) =>
+          matchesClubSlug(c.name, inputClubSlug)
+        );
 
         if (matchedClub) {
           communityId = matchedClub.id;
@@ -289,6 +344,10 @@ router.post("/:slug/register", async (req: Request, res: Response) => {
       process.env.CLIENT_ORIGIN ||
       req.headers.origin ||
       "http://localhost:5173";
+
+    // Invalidate stats and leaderboard caches on new registration
+    memoryCache.delete(`stats:${slug}`);
+    memoryCache.delete(`leaderboard:${slug}`);
 
     const shareLink = `${clientOrigin}/?ref=${newRegistration.referralCode}`;
 
@@ -388,6 +447,13 @@ router.get("/:slug/referral-info", async (req: Request, res: Response) => {
 router.get("/:slug/leaderboard", async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
+    const cacheKey = `leaderboard:${slug}`;
+
+    const cached = memoryCache.get<object>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
 
     const [event] = await db
       .select()
@@ -462,6 +528,7 @@ router.get("/:slug/leaderboard", async (req: Request, res: Response) => {
       id: row.clubId,
       name: row.clubName,
       parentCollegeName: row.parentCollegeId ? collegeNameLookup.get(row.parentCollegeId) || "Affiliated" : "Independent",
+      count: row.count,
       totalRegistrations: row.count,
     }));
 
@@ -486,12 +553,13 @@ router.get("/:slug/leaderboard", async (req: Request, res: Response) => {
       .orderBy(sql`count(sub.id) desc`)
       .limit(10);
 
-    const championsLeaderboard = topReferrers.map((row, index) => ({
+    const referrersLeaderboard = topReferrers.map((row, index) => ({
       rank: index + 1,
       id: row.id,
       name: row.name,
       collegeName: row.collegeName,
       referralCode: row.referralCode,
+      count: row.referralCount,
       referralCount: row.referralCount,
     }));
 
@@ -502,7 +570,7 @@ router.get("/:slug/leaderboard", async (req: Request, res: Response) => {
       .from(registrations)
       .where(eq(registrations.eventId, event.id));
 
-    return res.json({
+    const payload = {
       event: {
         id: event.id,
         slug: event.slug,
@@ -513,9 +581,15 @@ router.get("/:slug/leaderboard", async (req: Request, res: Response) => {
       },
       colleges: collegesLeaderboard,
       clubs: clubsLeaderboard,
-      champions: championsLeaderboard,
+      referrers: referrersLeaderboard,
+      topIndividualReferrers: referrersLeaderboard,
+      champions: referrersLeaderboard,
       updatedAt: new Date().toISOString(),
-    });
+    };
+
+    memoryCache.set(cacheKey, payload, 5); // 5 second cache
+    res.setHeader("X-Cache", "MISS");
+    return res.json(payload);
   } catch (error) {
     console.error("Leaderboard fetch error:", error);
     return res.status(500).json({ error: "Failed to fetch leaderboard" });

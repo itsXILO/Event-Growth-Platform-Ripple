@@ -211,4 +211,48 @@ describe("Step 5: Referral Attribution & Registration Test Suite", () => {
     const data = await res.json();
     expect(data.error).toContain("already registered");
   });
+
+  // ── 6. Event Stats & Caching ──────────────────────────────────────────────────
+  it("returns total registrations, goal of 500, percent, and short TTL caching headers", async () => {
+    // 1st request should be MISS
+    const res1 = await fetch(`${baseUrl}/api/events/${TEST_EVENT_SLUG}/stats`);
+    expect(res1.status).toBe(200);
+    const data = await res1.json();
+    expect(data.total).toBeGreaterThanOrEqual(1);
+    expect(data.goal).toBe(500);
+    expect(typeof data.percent).toBe("number");
+    expect(data.percent).toBe(Math.min(100, Math.round((data.total / 500) * 100)));
+
+    // 2nd request within a few seconds should HIT cache
+    const res2 = await fetch(`${baseUrl}/api/events/${TEST_EVENT_SLUG}/stats`);
+    expect(res2.headers.get("x-cache")).toBe("HIT");
+  });
+
+  // ── 7. Leaderboard SQL Aggregation & Caching ──────────────────────────────────
+  it("returns top colleges, top clubs, and top referrers with SQL-aggregated counts and cache headers", async () => {
+    const res1 = await fetch(`${baseUrl}/api/events/${TEST_EVENT_SLUG}/leaderboard`);
+    expect(res1.status).toBe(200);
+    const data = await res1.json();
+
+    // Verify top colleges
+    expect(Array.isArray(data.colleges)).toBe(true);
+    expect(data.colleges.length).toBeGreaterThan(0);
+    expect(data.colleges[0].rank).toBe(1);
+    expect(typeof data.colleges[0].totalRegistrations).toBe("number");
+
+    // Verify top clubs
+    expect(Array.isArray(data.clubs)).toBe(true);
+    expect(data.clubs.length).toBeGreaterThan(0);
+    expect(typeof data.clubs[0].count).toBe("number");
+
+    // Verify top individual referrers
+    expect(Array.isArray(data.referrers)).toBe(true);
+    expect(data.referrers.length).toBeGreaterThan(0);
+    expect(typeof data.referrers[0].count).toBe("number");
+    expect(data.referrers[0].referralCode).toBeDefined();
+
+    // Verify short cache HIT
+    const res2 = await fetch(`${baseUrl}/api/events/${TEST_EVENT_SLUG}/leaderboard`);
+    expect(res2.headers.get("x-cache")).toBe("HIT");
+  });
 });
