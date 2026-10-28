@@ -6,6 +6,7 @@ import { events, communities, registrations } from "../db/schema";
 import { generateReferralCode } from "../utils/referral";
 import { matchesClubSlug } from "../utils/slug";
 import { memoryCache } from "../utils/cache";
+import { requireAdminAuth } from "./admin";
 
 const router = Router();
 
@@ -600,7 +601,7 @@ router.get("/:slug/leaderboard", async (req: Request, res: Response) => {
  * GET /api/events/:slug/admin/analytics
  * Detailed administrative metrics: registrations over time, by college, by source, branches
  */
-router.get("/:slug/admin/analytics", async (req: Request, res: Response) => {
+router.get("/:slug/admin/analytics", requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
 
