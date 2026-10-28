@@ -1,10 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
-
-interface College {
-  id: number;
-  name: string;
-}
+import { SearchableCollegeSelect, type College } from "../components/SearchableCollegeSelect";
+import { LeaderboardWidget } from "../components/LeaderboardWidget";
 
 interface StatsData {
   total: number;
@@ -65,6 +62,7 @@ export function EventLandingPage() {
   const [copied, setCopied] = useState(false);
 
   const registerSectionRef = useRef<HTMLDivElement>(null);
+  const leaderboardSectionRef = useRef<HTMLDivElement>(null);
 
   const BRANCH_OPTIONS = [
     "Computer Science & Engineering",
@@ -123,6 +121,10 @@ export function EventLandingPage() {
     registerSectionRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const scrollToLeaderboard = () => {
+    leaderboardSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -177,11 +179,18 @@ export function EventLandingPage() {
         return;
       }
 
+      const canonicalShareLink = `${window.location.origin}/e/${slug}?ref=${result.referralCode}`;
+
+      // Save college for personalized squad leaderboard tracking
+      if (collegeId) {
+        localStorage.setItem("ripple_user_college_id", String(collegeId));
+      }
+
       setSuccessData({
         name: result.registration.name,
         email: result.registration.email,
         referralCode: result.referralCode,
-        shareLink: result.shareLink,
+        shareLink: canonicalShareLink,
       });
 
       // Instantly increment live stats locally
@@ -207,9 +216,6 @@ export function EventLandingPage() {
     setTimeout(() => setCopied(false), 2500);
   };
 
-  const shareText = encodeURIComponent(
-    `Hey! I just registered for the free NxtWave workshop "Build Your First AI Project in 60 Minutes". Join using my link and help our college climb the live leaderboard! 🚀`
-  );
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 pb-20 selection:bg-indigo-500 selection:text-white">
@@ -295,13 +301,13 @@ export function EventLandingPage() {
             >
               Claim Your Free Seat Now →
             </button>
-            <Link
-              to="/leaderboard"
-              className="w-full sm:w-auto px-6 py-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+            <button
+              onClick={scrollToLeaderboard}
+              className="w-full sm:w-auto px-6 py-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>🏆</span>
               <span>View College Leaderboard</span>
-            </Link>
+            </button>
           </div>
         </section>
 
@@ -393,6 +399,15 @@ export function EventLandingPage() {
           </div>
         </section>
 
+        {/* ── Public Leaderboard Section ───────────────────────────────────────── */}
+        <section id="leaderboard" ref={leaderboardSectionRef} className="pt-2 scroll-mt-20">
+          <LeaderboardWidget
+            slug={slug}
+            isEmbedded={true}
+            userCollegeId={collegeId ? Number(collegeId) : null}
+          />
+        </section>
+
         {/* ── Registration Form Section ───────────────────────────────────────── */}
         <section id="register" ref={registerSectionRef} className="pt-4 scroll-mt-20">
           {successData ? (
@@ -445,22 +460,31 @@ export function EventLandingPage() {
                   </div>
                 </div>
 
-                <div className="pt-2 flex flex-wrap gap-2 justify-center">
+                {/* Social Share Buttons */}
+                <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
                   <a
-                    href={`https://wa.me/?text=${shareText}%20${encodeURIComponent(successData.shareLink)}`}
+                    href={`https://wa.me/?text=${encodeURIComponent(
+                      `Hey! I just registered for the free NxtWave workshop "Build Your First AI Project in 60 Minutes". Use my link to join and help our college climb the live leaderboard! 🚀 ${successData.shareLink}`
+                    )}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
+                    className="flex-1 py-3 px-4 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-gray-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
                   >
-                    Share on WhatsApp ↗
+                    <span>💬</span>
+                    <span>Share on WhatsApp with Squad</span>
                   </a>
+
                   <a
-                    href={`https://t.me/share/url?url=${encodeURIComponent(successData.shareLink)}&text=${shareText}`}
+                    href={`https://t.me/share/url?url=${encodeURIComponent(
+                      successData.shareLink
+                    )}&text=${encodeURIComponent(
+                      `Join me for the free NxtWave AI Workshop! Build and deploy your first AI project in 60 mins.`
+                    )}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold"
+                    className="py-3 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    Telegram ↗
+                    <span>Telegram ↗</span>
                   </a>
                 </div>
               </div>
@@ -536,24 +560,17 @@ export function EventLandingPage() {
                   </p>
                 </div>
 
-                {/* College Selection */}
+                {/* College Selection (Searchable Dropdown) */}
                 <div>
                   <label className="block text-xs font-medium text-gray-300 mb-1.5">
                     College / Institution <span className="text-red-400">*</span>
                   </label>
-                  <select
-                    required
+                  <SearchableCollegeSelect
+                    colleges={colleges}
                     value={collegeId}
-                    onChange={(e) => setCollegeId(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full rounded-xl bg-gray-900 border border-white/10 px-4 py-3 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="">Select your college...</option>
-                    {colleges.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(id) => setCollegeId(id)}
+                    disabled={submitting}
+                  />
                 </div>
 
                 {/* Semester Selection */}
