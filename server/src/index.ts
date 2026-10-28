@@ -19,6 +19,12 @@ app.get("/health", (_req, res) => {
   });
 });
 
+import collegesRouter from "./routes/colleges";
+import eventsRouter from "./routes/events";
+
+app.use("/api/colleges", collegesRouter);
+app.use("/api/events", eventsRouter);
+
 // ── Start ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`);

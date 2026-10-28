@@ -1,6 +1,7 @@
 {
   "name": "ripple-monorepo",
   "version": "0.1.0",
+  "type": "module",
   "private": true,
   "description": "Event Growth Platform – monorepo root",
   "scripts": {
@@ -10,6 +11,7 @@
     "build": "npm run build --prefix server && npm run build --prefix client",
     "lint": "eslint 'client/src/**/*.{ts,tsx}' 'server/src/**/*.ts'",
     "format": "prettier --write 'client/src/**/*.{ts,tsx,css}' 'server/src/**/*.ts'",
+    "test": "npm run test --prefix server",
     "db:generate": "npm run db:generate --prefix server",
     "db:migrate": "npm run db:migrate --prefix server",
     "db:studio": "npm run db:studio --prefix server",

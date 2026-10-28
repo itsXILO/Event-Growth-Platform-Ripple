@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ripple
+          POSTGRES_PASSWORD: ripple_secret
+          POSTGRES_DB: ripple_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-cmd-interval 10s
+          --health-cmd-timeout 5s
+          --health-cmd-retries 5
+
+    env:
+      DATABASE_URL: postgresql://ripple:ripple_secret@localhost:5432/ripple_db
+      PORT: 4000
+      NODE_ENV: test
+      CLIENT_ORIGIN: http://localhost:5173
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Monorepo Dependencies
+        run: |
+          npm install
+          cd server && npm install
+          cd ../client && npm install
+
+      - name: Run Linter
+        run: npm run lint
+
+      - name: Run Database Migrations
+        run: npm run db:migrate --prefix server
+
+      - name: Run Database Seed
+        run: npm run db:seed --prefix server
+
+      - name: Run Referral Attribution Test Suite (Vitest)
+        run: npm run test --prefix server
+
+      - name: Build Monorepo (Client & Server)
+        run: npm run build

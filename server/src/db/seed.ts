@@ -1,13 +1,11 @@
 import "dotenv/config";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "./index";
 import {
   events,
   communities,
   registrations,
   type NewEvent,
-  type NewCommunity,
-  type NewRegistration,
 } from "./schema";
 
 const EVENT_DATA: NewEvent = {
@@ -179,7 +177,6 @@ export async function seed() {
     { name: "Manipal Institute of Technology (MIT)", target: 3 },
   ]; // Sum = 156 registrations
 
-  const clubsList = Array.from(clubMap.entries());
   let regGlobalIndex = 1;
   const now = Date.now();
   const DAY_MS = 24 * 60 * 60 * 1000;
