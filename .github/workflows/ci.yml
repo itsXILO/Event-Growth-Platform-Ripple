@@ -2,12 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
+    branches: ["**"]
 
 jobs:
-  test-and-build:
+  ci:
+    name: Lint, Test & Build
     runs-on: ubuntu-latest
 
     services:
@@ -30,34 +31,35 @@ jobs:
       PORT: 4000
       NODE_ENV: test
       CLIENT_ORIGIN: http://localhost:5173
+      ADMIN_PASSWORD: admin123
+      RESEND_API_KEY: ""
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "npm"
 
-      - name: Install Monorepo Dependencies
+      - name: Install dependencies
         run: |
-          npm install
-          cd server && npm install
-          cd ../client && npm install
+          npm ci
+          npm ci --prefix server
+          npm ci --prefix client
 
-      - name: Run Linter
+      - name: Lint codebase
         run: npm run lint
 
-      - name: Run Database Migrations
-        run: npm run db:migrate --prefix server
+      - name: Run database migrations & seed demo data
+        run: |
+          npm run db:migrate --prefix server
+          npm run db:seed --prefix server
 
-      - name: Run Database Seed
-        run: npm run db:seed --prefix server
+      - name: Run test suite (Vitest)
+        run: npm test
 
-      - name: Run Referral Attribution Test Suite (Vitest)
-        run: npm run test --prefix server
-
-      - name: Build Monorepo (Client & Server)
+      - name: Production build (Client & Server)
         run: npm run build

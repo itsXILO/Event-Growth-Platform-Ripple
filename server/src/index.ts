@@ -29,10 +29,29 @@ app.get("/health", (_req, res) => {
 import collegesRouter from "./routes/colleges";
 import eventsRouter from "./routes/events";
 import adminRouter from "./routes/admin";
+import path from "path";
+import fs from "fs";
 
 app.use("/api/colleges", collegesRouter);
 app.use("/api/events", eventsRouter);
 app.use("/api/admin", adminRouter);
+
+// ── Serve Production Client Bundle ────────────────────────────
+const clientDistCandidates = [
+  path.resolve(__dirname, "../../client/dist"),
+  path.resolve(__dirname, "../client/dist"),
+];
+
+for (const clientDist of clientDistCandidates) {
+  if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api/")) return next();
+      res.sendFile(path.join(clientDist, "index.html"));
+    });
+    break;
+  }
+}
 
 // ── Start ─────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== "test") {
