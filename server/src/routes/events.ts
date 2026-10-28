@@ -4,6 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { events, communities, registrations } from "../db/schema";
 import { generateReferralCode } from "../utils/referral";
+import { slugify } from "../utils/slug";
 
 const router = Router();
 
@@ -36,7 +37,11 @@ export const registerSchema = z.object({
     .min(2, "Branch name must be at least 2 characters")
     .max(100, "Branch name cannot exceed 100 characters"),
   referralCode: z.string().trim().optional(),
-  ref: z.string().trim().optional(), // alias for referralCode if passed from query/body
+  ref: z.string().trim().optional(),
+  referral_code: z.string().trim().optional(),
+  clubSlug: z.string().trim().optional(),
+  club_slug: z.string().trim().optional(),
+  club: z.string().trim().optional(),
   clubId: z.coerce.number().int().positive().optional(),
 });
 
@@ -103,10 +108,28 @@ router.post("/:slug/register", async (req: Request, res: Response) => {
       branch,
       referralCode: explicitRefCode,
       ref,
+      referral_code,
+      clubSlug,
+      club_slug,
+      club,
       clubId,
     } = validationResult.data;
 
-    const inputRefCode = (explicitRefCode || ref || "").trim().toUpperCase();
+    const inputRefCode = (
+      explicitRefCode ||
+      ref ||
+      referral_code ||
+      (req.query.ref as string) ||
+      ""
+    ).trim().toUpperCase();
+
+    const inputClubSlug = (
+      clubSlug ||
+      club_slug ||
+      club ||
+      (req.query.club as string) ||
+      ""
+    ).trim();
 
     // 2. Verify event exists
     const [event] = await db
@@ -132,20 +155,7 @@ router.post("/:slug/register", async (req: Request, res: Response) => {
       });
     }
 
-    // 4. Reject duplicate registrations for this event + email
-    const [duplicate] = await db
-      .select({ id: registrations.id })
-      .from(registrations)
-      .where(and(eq(registrations.eventId, event.id), eq(registrations.email, email)))
-      .limit(1);
-
-    if (duplicate) {
-      return res.status(409).json({
-        error: "You are already registered for this event with this email address! Check your inbox for confirmation details.",
-      });
-    }
-
-    // 5. Handle referral attribution & self-referral rejection
+    // 4. Handle referral attribution & self-referral rejection
     let source: "direct" | "referral" | "club_link" = "direct";
     let referredByRegistrationId: number | null = null;
     let communityId: number | null = null;
@@ -176,20 +186,63 @@ router.post("/:slug/register", async (req: Request, res: Response) => {
 
         referredByRegistrationId = referrer.id;
         source = "referral";
+      } else {
+        // Unknown referral code: reject gracefully by registering as direct
+        source = "direct";
+        referredByRegistrationId = null;
       }
     }
 
-    // 6. If not a referral, check if signed up via a club link
-    if (!referredByRegistrationId && clubId) {
-      const [club] = await db
-        .select({ id: communities.id })
-        .from(communities)
-        .where(and(eq(communities.id, clubId), eq(communities.type, "club")))
-        .limit(1);
+    // 5. Reject duplicate registrations for this event + email
+    const [duplicate] = await db
+      .select({ id: registrations.id })
+      .from(registrations)
+      .where(and(eq(registrations.eventId, event.id), eq(registrations.email, email)))
+      .limit(1);
 
-      if (club) {
-        communityId = club.id;
-        source = "club_link";
+    if (duplicate) {
+      return res.status(409).json({
+        error: "You are already registered for this event with this email address! Check your inbox for confirmation details.",
+      });
+    }
+
+    // 6. If not a referral, check if signed up via a club slug or club link
+    if (!referredByRegistrationId) {
+      if (inputClubSlug) {
+        const allClubs = await db
+          .select({ id: communities.id, name: communities.name })
+          .from(communities)
+          .where(eq(communities.type, "club"));
+
+        const targetSlug = slugify(inputClubSlug);
+        const matchedClub = allClubs.find((c) => {
+          const cSlug = slugify(c.name);
+          return (
+            cSlug === targetSlug ||
+            cSlug.includes(targetSlug) ||
+            targetSlug.includes(cSlug)
+          );
+        });
+
+        if (matchedClub) {
+          communityId = matchedClub.id;
+          source = "club_link";
+        } else {
+          // Unknown club slug: register gracefully as direct
+          source = "direct";
+          communityId = null;
+        }
+      } else if (clubId) {
+        const [clubRecord] = await db
+          .select({ id: communities.id })
+          .from(communities)
+          .where(and(eq(communities.id, clubId), eq(communities.type, "club")))
+          .limit(1);
+
+        if (clubRecord) {
+          communityId = clubRecord.id;
+          source = "club_link";
+        }
       }
     }
 
