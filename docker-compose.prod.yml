@@ -1,0 +1,43 @@
+services:
+  app:
+    image: ${DOCKER_IMAGE:-ripple-app:latest}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4000}:4000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ripple}:${POSTGRES_PASSWORD:-ripple_secret}@postgres:5432/${POSTGRES_DB:-ripple_db}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ripple-network
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ripple}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ripple_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-ripple_db}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - ripple-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ripple} -d ${POSTGRES_DB:-ripple_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+networks:
+  ripple-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
